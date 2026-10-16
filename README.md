@@ -98,11 +98,29 @@ command runs, so edits apply without a restart; new or removed skills need an op
 
 | Command | Does |
 |---|---|
+| `/usage` | quota used on **every signed-in login** (all Claude accounts, Codex, all Antigravity accounts), whether or not it is in `models` |
 | `/sources` | list sources, quota left, cooldowns, and which one this session is using |
 | `/fix-model [source]` | stop routing; with an argument, pin that source (`/fix-model openai`) |
 | `/auto-model` | resume routing |
 
 Each command, and each skill command, costs one model turn, because opencode runs commands through the model.
+
+## `/usage`
+
+```
+Claude
+  you@example.com (slot 2): 5h 50% used (resets in 4h 3m); 7d 95% used (resets in 2d 23h)
+  work@example.com (slot 1): no live login, it is only in claude-swap (run: cswap switch 1, or cswap run 1)
+OpenAI / Codex
+  ChatGPT / Codex: 5h 1% used (resets in 4h 38m); 7d 23% used (resets in 6d 1h) [plus plan]
+Antigravity
+  you@example.com: gemini weekly 100% used (resets in 1d 11h); claude weekly 0% used [cache is old]
+```
+
+Claude and Codex numbers are live (cached for `usageTtlSeconds`, shared with the router). Antigravity comes
+from the quota cache of `opencode-antigravity-auth`, so it can be old, and is flagged when it is. A
+claude-swap account that is not the live login cannot be queried without reading claude-swap's private
+storage, so it is listed with the command that brings it up.
 
 ## Limits
 

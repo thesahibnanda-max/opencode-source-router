@@ -1,7 +1,6 @@
 import type { PluginClient, Source, SourceSpec } from "../types.js"
-import { TtlCache } from "../util.js"
 import { type ClaudeAccount, readCredentials } from "./claude-accounts.js"
-import { UsageError, fetchClaudeRemaining } from "./claude-usage.js"
+import { type ClaudeUsageStore, remainingFromWindows } from "./claude-usage.js"
 
 const SWITCH_LABEL = "Switch Claude Code account"
 
@@ -35,34 +34,20 @@ export class ClaudeSwitcher {
 
 export class ClaudeOAuthSource implements Source {
   readonly model
-  private usage: TtlCache<number | null>
-  private blockedUntil = 0
 
   constructor(
     readonly spec: SourceSpec,
     private account: ClaudeAccount | undefined,
     private switcher: ClaudeSwitcher,
-    usageTtlSeconds: number,
+    private usage: ClaudeUsageStore,
   ) {
     this.model = { providerID: "anthropic", modelID: spec.modelID }
-    this.usage = new TtlCache(usageTtlSeconds * 1000)
   }
 
-  remaining(): Promise<number | null> {
-    if (!this.account) return Promise.resolve(null)
-    const account = this.account
-    return this.usage.get(async () => {
-      if (Date.now() < this.blockedUntil) return null
-      const creds = await readCredentials(account)
-      if (!creds || (creds.expiresAt && creds.expiresAt < Date.now())) return null
-      try {
-        return await fetchClaudeRemaining(creds.accessToken)
-      } catch (err) {
-        // The usage endpoint has a small request budget; back off when it pushes back.
-        if (err instanceof UsageError && err.status === 429) this.blockedUntil = Date.now() + (err.retryAfterMs ?? 10 * 60_000)
-        return null
-      }
-    })
+  async remaining(): Promise<number | null> {
+    if (!this.account) return null
+    const result = await this.usage.get(this.account)
+    return "windows" in result ? remainingFromWindows(result.windows) : null
   }
 
   async prepare(): Promise<void> {

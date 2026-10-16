@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { createInterface } from "node:readline"
 import type { Source, SourceSpec } from "../types.js"
 import { TtlCache, clamp01 } from "../util.js"
+import type { UsageWindow } from "./claude-usage.js"
 
 interface CodexWindow {
   usedPercent?: number
@@ -15,6 +16,32 @@ export function remainingFromCodex(result: any): number | null {
     .map((w: CodexWindow | undefined) => w?.usedPercent)
     .filter((u): u is number => typeof u === "number")
   return used.length === 0 ? null : clamp01(1 - Math.max(...used) / 100)
+}
+
+const windowLabel = (mins: unknown) => (mins === 300 ? "5h" : mins === 10080 ? "7d" : typeof mins === "number" ? `${mins}m` : "window")
+
+/** Windows and plan name from a `account/rateLimits/read` result, for display. */
+export function codexWindows(result: any): { plan?: string; windows: UsageWindow[] } {
+  const limits = result?.rateLimitsByLimitId?.codex ?? result?.rateLimits
+  const windows: UsageWindow[] = []
+  for (const w of [limits?.primary, limits?.secondary]) {
+    if (typeof w?.usedPercent !== "number") continue
+    windows.push({ label: windowLabel(w.windowDurationMins), usedPercent: w.usedPercent, resetsAt: typeof w.resetsAt === "number" ? w.resetsAt * 1000 : undefined })
+  }
+  return { plan: typeof limits?.planType === "string" ? limits.planType : undefined, windows }
+}
+
+/** Cached live Codex limits, shared by the router and `/usage`. Resolves null when Codex is missing or signed out. */
+export class CodexUsageStore {
+  private cache: TtlCache<any | null>
+
+  constructor(ttlMs: number, private read: () => Promise<any> = () => readCodexLimits()) {
+    this.cache = new TtlCache(ttlMs)
+  }
+
+  get(): Promise<any | null> {
+    return this.cache.get(() => this.read().catch(() => null))
+  }
 }
 
 /** Ask the local Codex CLI (app-server over stdio) for the live ChatGPT plan limits. */
@@ -51,19 +78,17 @@ export function readCodexLimits(bin = "codex", timeoutMs = 15_000): Promise<any>
 
 export class OpenAISource implements Source {
   readonly model
-  private usage: TtlCache<number | null>
 
   constructor(
     readonly spec: SourceSpec,
-    usageTtlSeconds: number,
-    private read: () => Promise<any> = () => readCodexLimits(),
+    private usage: CodexUsageStore,
   ) {
     this.model = { providerID: "openai", modelID: spec.modelID }
-    this.usage = new TtlCache(usageTtlSeconds * 1000)
   }
 
-  remaining(): Promise<number | null> {
-    return this.usage.get(() => this.read().then(remainingFromCodex, () => null))
+  async remaining(): Promise<number | null> {
+    const result = await this.usage.get()
+    return result === null ? null : remainingFromCodex(result)
   }
 
   async prepare(): Promise<void> {}

@@ -3,7 +3,8 @@ import { ConfigError, parseOptions } from "./config.js"
 import { Controller, type ReplayPart } from "./controller.js"
 import { buildCommands, buildSkillPrompt, type SkillCommand } from "./skills/commands.js"
 import { discoverSkills } from "./skills/discover.js"
-import { buildSources } from "./sources/index.js"
+import { buildSources, createUsageHub, type UsageHub } from "./sources/index.js"
+import { collectUsage, renderUsage } from "./usage.js"
 import type { PluginClient } from "./types.js"
 
 const ROUTER_COMMANDS = {
@@ -11,6 +12,8 @@ const ROUTER_COMMANDS = {
   "fix-model": "Stop auto-routing for this session (optionally pin a source: /fix-model openai)",
   "auto-model": "Resume auto-routing for this session",
 } as const
+
+const USAGE_COMMAND = { usage: "Show quota used on every signed-in Claude, Codex and Antigravity account" } as const
 
 const toReplay = (parts: any[]): ReplayPart[] =>
   parts.flatMap((p): ReplayPart[] => {
@@ -27,16 +30,18 @@ const SourceRouter: Plugin = async ({ client: rawClient, directory }, rawOptions
 
   let controller: Controller
   let providers: Array<{ id: string; config: Record<string, unknown> }> = []
+  let hub: UsageHub
   let routing = false
   let skillCommands: SkillCommand[] = []
   try {
     const options = parseOptions(rawOptions)
-    const sources = buildSources(options, client)
+    hub = createUsageHub(options.usageTtlSeconds)
+    const sources = buildSources(options, client, hub)
     providers = sources.flatMap((s) => s.provider?.() ?? [])
     controller = new Controller(sources, options, log)
     routing = sources.length > 0
     const skills = discoverSkills({ directory, tools: options.skills })
-    skillCommands = buildCommands(skills, options.skills.exclude, routing ? Object.keys(ROUTER_COMMANDS) : [])
+    skillCommands = buildCommands(skills, options.skills.exclude, [...Object.keys(USAGE_COMMAND), ...(routing ? Object.keys(ROUTER_COMMANDS) : [])])
     if (skillCommands.length > 0) log("info", `registered ${skillCommands.length} skill commands`)
   } catch (err) {
     log("warn", `disabled: ${err instanceof ConfigError || err instanceof Error ? err.message : String(err)}`)
@@ -49,6 +54,7 @@ const SourceRouter: Plugin = async ({ client: rawClient, directory }, rawOptions
     config: async (config) => {
       const cfg = config as any
       cfg.command = {
+        ...Object.fromEntries(Object.entries(USAGE_COMMAND).map(([name, d]) => [name, stub(d)])),
         ...(routing ? Object.fromEntries(Object.entries(ROUTER_COMMANDS).map(([name, d]) => [name, stub(d)])) : {}),
         ...Object.fromEntries(skillCommands.map((c) => [c.name, stub(c.description)])),
         ...cfg.command,
@@ -94,6 +100,10 @@ const SourceRouter: Plugin = async ({ client: rawClient, directory }, rawOptions
       const skill = skillByName.get(input.command)
       if (skill) {
         part.text = buildSkillPrompt(skill, input.arguments)
+        return
+      }
+      if (input.command === "usage") {
+        part.text = `Reply with exactly the text below and nothing else:\n\n${renderUsage(await collectUsage({ hub }))}`
         return
       }
       if (!routing || !(input.command in ROUTER_COMMANDS)) return

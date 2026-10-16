@@ -3,6 +3,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import type { Source, SourceSpec } from "../types.js"
 import { clamp01 } from "../util.js"
+import type { UsageWindow } from "./claude-usage.js"
 
 const STALE_MS = 6 * 3600_000
 
@@ -11,6 +12,7 @@ interface QuotaEntry {
   resetTime?: string
 }
 interface AntigravityAccount {
+  email?: string
   enabled?: boolean
   cachedQuota?: Record<string, QuotaEntry>
   cachedQuotaUpdatedAt?: number
@@ -36,6 +38,48 @@ export function remainingFromAccounts(accounts: AntigravityAccount[], family: st
     if (fractions.length > 0) per.push(Math.min(...fractions))
   }
   return per.length === 0 ? null : clamp01(Math.max(...per))
+}
+
+export interface AntigravityUsage {
+  email: string
+  enabled: boolean
+  /** The cache is old or missing, so the numbers may be out of date. */
+  stale: boolean
+  /** Model family ("gemini", "claude") to its quota windows. */
+  families: Record<string, UsageWindow[]>
+}
+
+/** Every Antigravity account with its cached quota windows, for display. */
+export function antigravityUsage(accounts: AntigravityAccount[], now = Date.now()): AntigravityUsage[] {
+  return accounts.map((a) => {
+    const families: Record<string, UsageWindow[]> = {}
+    for (const [key, q] of Object.entries(a.cachedQuota ?? {})) {
+      const m = /^(.+)-(weekly|nonweekly)$/.exec(key)
+      if (!m || typeof q?.remainingFraction !== "number") continue
+      const resetsAt = q.resetTime ? Date.parse(q.resetTime) : NaN
+      const passed = !Number.isNaN(resetsAt) && resetsAt <= now
+      ;(families[m[1]!] ??= []).push({
+        label: m[2] === "weekly" ? "weekly" : "non-weekly",
+        usedPercent: passed ? 0 : (1 - q.remainingFraction) * 100,
+        resetsAt: Number.isNaN(resetsAt) || passed ? undefined : resetsAt,
+      })
+    }
+    return {
+      email: a.email ?? "(unknown account)",
+      enabled: a.enabled !== false,
+      stale: !a.cachedQuotaUpdatedAt || now - a.cachedQuotaUpdatedAt > STALE_MS,
+      families,
+    }
+  })
+}
+
+export function readAntigravityAccounts(file: string = antigravityFile()): AntigravityAccount[] {
+  try {
+    const data = JSON.parse(readFileSync(file, "utf-8"))
+    return Array.isArray(data?.accounts) ? data.accounts : []
+  } catch {
+    return []
+  }
 }
 
 export class GoogleSource implements Source {
