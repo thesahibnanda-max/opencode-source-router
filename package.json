@@ -1,7 +1,7 @@
 {
   "name": "opencode-source-router",
   "version": "0.1.0",
-  "description": "opencode plugin that routes each message to the Claude, Codex or Antigravity source with the most quota left, and fails over on rate limits.",
+  "description": "opencode plugin that routes each message to the Claude, Codex or Antigravity source with the most quota left, fails over on rate limits, and exposes Claude/Codex/Antigravity skills as slash commands.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

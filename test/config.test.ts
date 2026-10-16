@@ -19,10 +19,18 @@ describe("parseOptions", () => {
     expect(o.sources.map((s) => s.key)).toEqual(["anthropic@a", "openai", "google"])
     expect(o).toMatchObject({ cooldownMinutes: 15, switchMargin: 0.1, unknownScore: 0.5, usageTtlSeconds: 180 })
   })
-  it("requires models", () => {
-    expect(() => parseOptions(undefined)).toThrow(ConfigError)
-    expect(() => parseOptions({ models: {} })).toThrow(/at least one/)
+  it("needs models or skills", () => {
+    expect(parseOptions(undefined).sources).toEqual([])
+    expect(() => parseOptions({ skills: false })).toThrow(/Nothing to do/)
     expect(() => parseOptions({ models: { openai: "" } })).toThrow(/non-empty/)
+    expect(() => parseOptions("nope")).toThrow(ConfigError)
+  })
+  it("parses skills options", () => {
+    expect(parseOptions({}).skills).toEqual({ claude: true, codex: true, agy: true, exclude: [] })
+    expect(parseOptions({ skills: { codex: false, exclude: ["claude-load-*"] } }).skills).toEqual({ claude: true, codex: false, agy: true, exclude: ["claude-load-*"] })
+    expect(parseOptions({ models: { openai: "m" }, skills: false }).skills.claude).toBe(false)
+    expect(() => parseOptions({ skills: { codex: "no" } })).toThrow(/skills.codex/)
+    expect(() => parseOptions({ skills: { exclude: "x" } })).toThrow(/skills.exclude/)
   })
   it("accepts env var names only under auth, never keys", () => {
     expect(parseOptions({ models: { "anthropic-api@k": "m" }, auth: { "anthropic-api": { k: "MY_KEY" } } }).auth).toEqual({ "anthropic-api": { k: "MY_KEY" } })

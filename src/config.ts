@@ -2,8 +2,17 @@ import type { SourceKind, SourceSpec } from "./types.js"
 
 export class ConfigError extends Error {}
 
+export interface SkillsOptions {
+  claude: boolean
+  codex: boolean
+  agy: boolean
+  /** Glob patterns matched against command names, e.g. `codex-*-research`. */
+  exclude: string[]
+}
+
 export interface RouterOptions {
   sources: SourceSpec[]
+  skills: SkillsOptions
   /** provider -> name -> environment variable that holds the API key. */
   auth: Record<string, Record<string, string>>
   cooldownMinutes: number
@@ -45,14 +54,36 @@ function number(value: unknown, name: string, fallback: number, min: number, max
   return value
 }
 
-export function parseOptions(raw: unknown): RouterOptions {
-  if (typeof raw !== "object" || raw === null) {
-    throw new ConfigError('Missing plugin options. Use ["opencode-source-router", { "models": { ... } }].')
+function parseSkills(raw: unknown): SkillsOptions {
+  if (raw === undefined) return { claude: true, codex: true, agy: true, exclude: [] }
+  if (raw === false) return { claude: false, codex: false, agy: false, exclude: [] }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new ConfigError('"skills" must be false or an object like { "codex": false, "exclude": ["claude-demo-*"] }.')
   }
   const o = raw as Record<string, unknown>
-  const models = o.models
-  if (typeof models !== "object" || models === null || Array.isArray(models) || Object.keys(models).length === 0) {
-    throw new ConfigError('"models" must be an object like { "openai": "gpt-5.6-terra" } with at least one entry.')
+  const flag = (name: string) => {
+    if (o[name] !== undefined && typeof o[name] !== "boolean") throw new ConfigError(`"skills.${name}" must be true or false.`)
+    return o[name] !== false
+  }
+  const exclude = o.exclude ?? []
+  if (!Array.isArray(exclude) || exclude.some((e) => typeof e !== "string" || !e)) {
+    throw new ConfigError('"skills.exclude" must be a list of glob patterns.')
+  }
+  return { claude: flag("claude"), codex: flag("codex"), agy: flag("agy"), exclude: exclude as string[] }
+}
+
+export function parseOptions(raw: unknown): RouterOptions {
+  if (raw !== undefined && (typeof raw !== "object" || raw === null || Array.isArray(raw))) {
+    throw new ConfigError('Plugin options must be an object: ["opencode-source-router", { "models": { ... } }].')
+  }
+  const o = (raw ?? {}) as Record<string, unknown>
+  const models = o.models ?? {}
+  if (typeof models !== "object" || models === null || Array.isArray(models)) {
+    throw new ConfigError('"models" must be an object like { "openai": "gpt-5.6-terra" }.')
+  }
+  const skills = parseSkills(o.skills)
+  if (Object.keys(models).length === 0 && !skills.claude && !skills.codex && !skills.agy) {
+    throw new ConfigError('Nothing to do: add at least one entry to "models" or leave "skills" enabled.')
   }
   const sources: SourceSpec[] = Object.entries(models).map(([key, modelID]) => {
     if (typeof modelID !== "string" || !modelID.trim()) throw new ConfigError(`Model for "${key}" must be a non-empty string.`)
@@ -76,6 +107,7 @@ export function parseOptions(raw: unknown): RouterOptions {
 
   return {
     sources,
+    skills,
     auth,
     cooldownMinutes: number(o.cooldownMinutes, "cooldownMinutes", 15, 1, 24 * 60),
     switchMargin: number(o.switchMargin, "switchMargin", 0.1, 0, 1),
