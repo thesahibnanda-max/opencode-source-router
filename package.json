@@ -1,0 +1,39 @@
+{
+  "name": "opencode-source-router",
+  "version": "0.1.0",
+  "description": "opencode plugin that routes each message to the Claude, Codex or Antigravity source with the most quota left, fails over on rate limits, and exposes Claude/Codex/Antigravity skills as slash commands.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "claude",
+    "codex",
+    "antigravity",
+    "model-routing"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thesahibnanda-max/opencode-source-router.git"
+  },
+  "homepage": "https://github.com/thesahibnanda-max/opencode-source-router#readme",
+  "bugs": {
+    "url": "https://github.com/thesahibnanda-max/opencode-source-router/issues"
+  }
+}
