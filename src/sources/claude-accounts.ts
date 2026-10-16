@@ -47,22 +47,30 @@ function claudeJsonEmail(dir: string, home: string): string | undefined {
 export function discoverAccounts(home = homedir(), env: NodeJS.ProcessEnv = process.env): ClaudeAccount[] {
   const found = new Map<string, ClaudeAccount>()
 
+  const defaultDir = env.CLAUDE_CONFIG_DIR ?? join(home, ".claude")
+  // The live login is whoever Claude Code says is signed in, not what claude-swap last recorded:
+  // sequence.json's "active" slot can be out of date after a manual /login.
+  const liveEmail = claudeJsonEmail(defaultDir, home)
+
   const swapRoot = join(home, ".claude-swap-backup")
   const seq = readJson(join(swapRoot, "sequence.json"))
   if (seq?.accounts && typeof seq.accounts === "object") {
-    for (const [num, a] of Object.entries<any>(seq.accounts)) {
-      if (typeof a?.email !== "string") continue
-      const active = String(seq.activeAccountNumber) === num
-      const configDir = active ? join(home, ".claude") : join(swapRoot, "sessions", `${num}-${slugifyEmail(a.email)}`)
+    const entries = Object.entries<any>(seq.accounts).filter(([, a]) => typeof a?.email === "string")
+    const liveNum = liveEmail ? entries.find(([, a]) => a.email.toLowerCase() === liveEmail.toLowerCase())?.[0] : String(seq.activeAccountNumber)
+    for (const [num, a] of entries) {
+      const active = liveNum === num && !env.CLAUDE_CONFIG_DIR
+      const configDir = active ? defaultDir : join(swapRoot, "sessions", `${num}-${slugifyEmail(a.email)}`)
       const service = active ? DEFAULT_SERVICE : hashedService(configDir)
+      // A session profile must really belong to this account, or its token would be labelled wrongly.
+      const owner = active ? undefined : claudeJsonEmail(configDir, home)
+      if (owner && owner.toLowerCase() !== a.email.toLowerCase()) continue
       found.set(service, { service, configDir, email: a.email, num, alias: typeof a.alias === "string" ? a.alias : undefined })
     }
   }
 
-  const defaultDir = env.CLAUDE_CONFIG_DIR ?? join(home, ".claude")
   const defaultService = env.CLAUDE_CONFIG_DIR ? hashedService(env.CLAUDE_CONFIG_DIR) : DEFAULT_SERVICE
   if (!found.has(defaultService)) {
-    found.set(defaultService, { service: defaultService, configDir: defaultDir, email: claudeJsonEmail(defaultDir, home) })
+    found.set(defaultService, { service: defaultService, configDir: defaultDir, email: liveEmail })
   }
 
   try {

@@ -65,6 +65,20 @@ describe("claude accounts", () => {
     expect(accounts.find((a) => a.num === "1")?.service).toBe(DEFAULT_SERVICE)
     expect(accounts.find((a) => a.num === "2")?.service).toBe(hashedService(join(h, ".claude-swap-backup", "sessions", "2-me_x_example.com")))
   })
+  it("follows the account Claude Code is really signed in as, even when sequence.json is stale", () => {
+    const h = home() // sequence.json says slot 1 is active
+    writeFileSync(join(h, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "ME+X@example.com" } }))
+    const accounts = discoverAccounts(h, {})
+    expect(accounts.find((a) => a.num === "2")?.service).toBe(DEFAULT_SERVICE)
+    expect(accounts.find((a) => a.num === "1")?.service).toBe(hashedService(join(h, ".claude-swap-backup", "sessions", "1-work_example.com")))
+  })
+  it("ignores a session profile that is signed in as a different account", () => {
+    const h = home()
+    const dir = join(h, ".claude-swap-backup", "sessions", "2-me_x_example.com")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "someone-else@example.com" } }))
+    expect(discoverAccounts(h, {}).find((a) => a.num === "2")).toBeUndefined()
+  })
   it("resolves by slot, alias, email and email prefix", () => {
     const accounts = discoverAccounts(home(), {})
     for (const ref of ["2", "home", "ME+X@example.com", "me+x"]) expect(resolveAccount(accounts, ref)?.num).toBe("2")
