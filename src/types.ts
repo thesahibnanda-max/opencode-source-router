@@ -19,7 +19,7 @@ export interface PluginClient {
   provider: {
     auth(): Promise<{ data?: Record<string, Array<{ type: string; label: string }>> }>
     oauth: {
-      authorize(opts: { path: { id: string }; body: Record<string, unknown> }): Promise<{ error?: unknown }>
+      authorize(opts: { path: { id: string }; body: Record<string, unknown> }): Promise<{ data?: { instructions?: string }; error?: unknown }>
       callback(opts: { path: { id: string }; body: Record<string, unknown> }): Promise<{ error?: unknown }>
     }
   }

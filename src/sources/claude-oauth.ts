@@ -14,17 +14,36 @@ export class ClaudeSwitcher {
 
   constructor(private client: PluginClient) {}
 
+  /**
+   * Method indexes to try. Listing the methods is the precise way, but opencode answers that call with
+   * an error while two or more Claude logins exist (the switch menu has an option without a hint), so
+   * fall back to the first few indexes: the switch method is the plugin's only one and comes first.
+   */
+  private async candidateMethods(): Promise<number[]> {
+    try {
+      const methods = (await this.client.provider.auth()).data?.anthropic ?? []
+      const method = methods.findIndex((m) => m.type === "oauth" && m.label === SWITCH_LABEL)
+      if (method >= 0) return [method]
+    } catch {
+      // listing unavailable: probe below
+    }
+    return [0, 1, 2, 3]
+  }
+
   switchTo(service: string): Promise<void> {
     const run = async () => {
       if (this.active === service) return
-      const methods = (await this.client.provider.auth()).data?.anthropic ?? []
-      const method = methods.findIndex((m) => m.type === "oauth" && m.label === SWITCH_LABEL)
-      if (method < 0) throw new Error('opencode-claude-auth is not loaded (no "Switch Claude Code account" method)')
-      const auth = await this.client.provider.oauth.authorize({ path: { id: "anthropic" }, body: { method, inputs: { account: service } } })
-      if (auth.error) throw new Error("could not switch Claude account (authorize failed)")
-      const done = await this.client.provider.oauth.callback({ path: { id: "anthropic" }, body: { method } })
-      if (done.error) throw new Error("could not switch Claude account (callback failed)")
-      this.active = service
+      for (const method of await this.candidateMethods()) {
+        const auth = await this.client.provider.oauth
+          .authorize({ path: { id: "anthropic" }, body: { method, inputs: { account: service } } })
+          .catch(() => ({ error: true }) as { data?: { instructions?: string }; error?: unknown })
+        // The reply names the Keychain entry it activated: only accept the one we asked for.
+        if (auth.error || !auth.data?.instructions?.includes(`(${service})`)) continue
+        await this.client.provider.oauth.callback({ path: { id: "anthropic" }, body: { method } }).catch(() => undefined)
+        this.active = service
+        return
+      }
+      throw new Error('could not switch the Claude account (opencode-claude-auth\'s "Switch Claude Code account" method did not confirm it)')
     }
     const next = this.chain.then(run, run)
     this.chain = next.catch(() => undefined)
