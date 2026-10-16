@@ -38,5 +38,13 @@
     "@types/node": "^22.20.5",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thesahibnanda-max/opencode-source-router.git"
+  },
+  "homepage": "https://github.com/thesahibnanda-max/opencode-source-router#readme",
+  "bugs": {
+    "url": "https://github.com/thesahibnanda-max/opencode-source-router/issues"
   }
 }

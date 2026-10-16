@@ -30,11 +30,14 @@ A source with unknown quota scores `unknownScore` (default 0.5) and is skipped o
 
 ## Install
 
+The plugin is not on npm. Install it straight from GitHub: a CI job builds it and publishes the ready-to-run
+files to the `dist` branch, so there is no clone and no build step on your machine.
+
 ```jsonc
 // ~/.config/opencode/opencode.json
 {
   "plugin": [
-    ["opencode-source-router", {
+    ["github:thesahibnanda-max/opencode-source-router#dist", {
       "models": {
         "anthropic@work":       "claude-opus-5",          // Claude OAuth login: slot, alias or email
         "anthropic-api@backup": "claude-sonnet-5",        // Claude API key (see "auth")
@@ -46,6 +49,10 @@ A source with unknown quota scores `unknownScore` (default 0.5) and is skipped o
   ]
 }
 ```
+
+Restart opencode after editing. If your opencode version does not accept a `github:` plugin spec, clone the
+repo, run `npm install && npm run build`, and point at it with a file URL instead:
+`["file:///absolute/path/to/opencode-source-router/dist/index.js", { ... }]`.
 
 Leave a source out and it is never used. opencode rejects unknown top-level keys, so the settings
 live in the plugin's options as above. `auth` names an environment variable per API-key source;

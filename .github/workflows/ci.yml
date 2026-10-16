@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # On the default branch, publish only the built plugin to the `dist` branch so it can be
+      # installed straight from GitHub without a build step (see README).
+      - name: Publish built plugin to the dist branch
+        if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
+        run: bash scripts/publish-dist.sh "$RUNNER_TEMP/dist-out"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
